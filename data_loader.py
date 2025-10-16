@@ -6,7 +6,6 @@ import pandas as pd
 import streamlit as st
 from config import RESERVED_COLS
 
-
 @st.cache_data
 def load_csv(csv_path: str) -> pd.DataFrame:
     """Load and normalize CSV data with caching."""

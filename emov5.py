@@ -16,11 +16,11 @@ import open_clip
 # =============================
 # Config
 # =============================
-ANNOTS_CSV = "../archive/annots_arrs/annot_arrs_train.csv"
-IMG_ROOT = "../archive/img_arrs"
+ANNOTS_CSV = "archive/annots_arrs/annot_arrs_train.csv"
+IMG_ROOT = "archive/img_arrs"
 BATCH_SIZE = 16
 TOP_K = 10
-CKPT_STEPS = 111885   # your saved SAE checkpoint step (updated to match eval script)
+CKPT_STEPS = 111885
 
 # Global cache files (encode each unique image exactly once)
 GLOBAL_EMBS_NPY = "all_clip_embs_fp16.npy"
@@ -29,9 +29,7 @@ GLOBAL_INDEX_CSV = "all_clip_index.csv"
 # =============================
 # SAE import
 # =============================
-import sys
-sys.path.append("../")
-from model import SAEConfig, SAE  # noqa: E402
+from model import SAEConfig, SAE
 
 # =============================
 # Helpers
@@ -42,7 +40,7 @@ def device_str() -> str:
 
 
 def ckpt_path(steps: int) -> Tuple[str, str]:
-    return f"../ckpt/{steps}.pt", f"../ckpt/{steps}.optim.pt"
+    return f"ckpt/{steps}.pt", f"ckpt/{steps}.optim.pt"
 
 
 def emb_url(embedding: np.ndarray) -> str:
@@ -128,41 +126,16 @@ clip_model, _, preprocess = open_clip.create_model_and_transforms(
 )
 clip_model.eval()
 
-# print("Loading SAE checkpoint…")  # Suppressed for cleaner output when used as module
 model_path, _ = ckpt_path(CKPT_STEPS)
 state_dict = torch.load(model_path, weights_only=False, map_location="cpu")
-# Override device in config (checkpoint may have 'cuda' but we need cpu/mps)
 state_dict["config"].model.device = DEV
 sae = SAE(state_dict["config"].model)
 sae.load_state_dict(state_dict["model"], strict=False)
 sae.to(DEV).eval()
 
 # =============================
-# Core pipeline (legacy encode_images retained for ad-hoc use)
+# Core pipeline
 # =============================
-
-def encode_images(paths, name: str) -> str:
-    """(Legacy) Encode a *specific list* of images and save to {name}_embs.npy.
-    Kept for backwards-compat, but one-vs-all now uses the global cache below.
-    """
-    embs_npy = f"{name.lower()}_embs.npy"
-    if os.path.exists(embs_npy):
-        print(f"Reusing cached embeddings: {embs_npy}")
-        return embs_npy
-    ds = ImageDataset(paths, transform=preprocess)
-    loader = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, pin_memory=False, drop_last=False)
-    all_embs = []
-    with torch.inference_mode():
-        for batch_imgs in tqdm(loader, desc=f"Encoding {name}"):
-            batch_imgs = batch_imgs.to(DEV, non_blocking=False)
-            feats = clip_model.encode_image(batch_imgs)
-            feats = feats / feats.norm(dim=-1, keepdim=True)
-            all_embs.append(feats.cpu().numpy().astype(np.float16))
-    embs = np.concatenate(all_embs, axis=0)
-    np.save(embs_npy, embs)
-    print(f"Saved {embs.shape} to {embs_npy}")
-    return embs_npy
-
 
 def run_sae_on_embs(embs_npy: str) -> Tuple[torch.Tensor, torch.Tensor]:
     embs = np.load(embs_npy)
@@ -367,7 +340,5 @@ def one_vs_all_topk(df: pd.DataFrame, labels: list[str], topk: int = 5, min_stab
 # ---- run when executed directly ----
 if __name__ == "__main__":
     df = pd.read_csv(ANNOTS_CSV)
-    # Build/load the global cache once
     ALL_EMBS, PATH2IDX = build_global_cache(df)
-    # (You already set up CLIP+SAE above; we just invoke the loop)
     _ = one_vs_all_topk(df, CLASS_LABELS, topk=5, min_stability=0.02, all_embs=ALL_EMBS, path2idx=PATH2IDX)

@@ -1,11 +1,3 @@
-"""
-SAEmotion Streamlit App - View Layer Only
-Clean UI code with business logic extracted to separate modules.
-
-Usage:
-    streamlit run app_clean.py --server.runOnSave=true
-"""
-# IMPORTANT: Define TrainConfig before loading emov5 (required for torch checkpoint)
 import sys
 sys.path.append("../")
 from dataclasses import dataclass
@@ -21,15 +13,12 @@ class TrainConfig:
     compile: bool
 
 # Standard library imports
-import json
-import traceback
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-# Import business logic modules
 from config import (
-    DEFAULT_CSV, ENDPOINT, TOP_K, SLIDER_MIN, SLIDER_MAX, 
+    DEFAULT_CSV, TOP_K, SLIDER_MIN, SLIDER_MAX, 
     SLIDER_STEP, PRIORITY_GROUPS
 )
 from data_loader import (
@@ -137,7 +126,7 @@ with st.form(key="global_controls_form"):
                 st.session_state.slider_values[int(fid)] = float(vals[i])
 
 # =====================================================================
-# ADD/SUBTRACT EMOTION (IN FORM)
+# ADD/SUBTRACT EMOTION
 # =====================================================================
 
 st.markdown("### Add/Subtract Emotion")
@@ -352,7 +341,6 @@ if submitted:
             with st.spinner("Querying image backend..."):
                 result = search_images(
                     embedding=vec_norm,
-                    endpoint=ENDPOINT,
                 )
             
             # Display results

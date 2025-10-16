@@ -20,7 +20,7 @@ ANNOTS_CSV = "../archive/annots_arrs/annot_arrs_train.csv"
 IMG_ROOT = "../archive/img_arrs"
 BATCH_SIZE = 16
 TOP_K = 10
-CKPT_STEPS = 3189   # your saved SAE checkpoint step
+CKPT_STEPS = 111885   # your saved SAE checkpoint step (updated to match eval script)
 
 # Global cache files (encode each unique image exactly once)
 GLOBAL_EMBS_NPY = "all_clip_embs_fp16.npy"
@@ -116,7 +116,7 @@ class RunOutputs:
 # =============================
 # Model init (OpenCLIP + SAE)
 # =============================
-print("Setting up models…")
+# print("Setting up models…")  # Suppressed for cleaner output when used as module
 DEV = device_str()
 model_name = "ViT-SO400M-14-SigLIP-384"
 pretrained_tag = dict(open_clip.list_pretrained())[model_name]
@@ -128,9 +128,11 @@ clip_model, _, preprocess = open_clip.create_model_and_transforms(
 )
 clip_model.eval()
 
-print("Loading SAE checkpoint…")
+# print("Loading SAE checkpoint…")  # Suppressed for cleaner output when used as module
 model_path, _ = ckpt_path(CKPT_STEPS)
 state_dict = torch.load(model_path, weights_only=False, map_location="cpu")
+# Override device in config (checkpoint may have 'cuda' but we need cpu/mps)
+state_dict["config"].model.device = DEV
 sae = SAE(state_dict["config"].model)
 sae.load_state_dict(state_dict["model"], strict=False)
 sae.to(DEV).eval()

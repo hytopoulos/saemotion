@@ -1,5 +1,7 @@
 # SAEFE
 
+I designed this tool for my blog on AI safety [here](https://hytopoulos.github.io/emotion-bias-vlm/)!
+
 Sparse Autoencoders for Emotion (SAEFE) is a method to adapt vision-language models for emotion recognition using interpretable features.
 
 SAEFE can be used to attenuate bias by adding or removing features that are associated with gender, age, race, or other protected characteristics.

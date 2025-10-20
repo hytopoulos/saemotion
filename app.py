@@ -1,18 +1,3 @@
-import sys
-sys.path.append("../")
-from dataclasses import dataclass
-from model import SAEConfig
-
-@dataclass
-class TrainConfig:
-    model: SAEConfig
-    lr: float
-    weight_decay: float
-    batch_size: int
-    epochs: int
-    compile: bool
-
-# Standard library imports
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -25,14 +10,13 @@ from data_loader import (
     load_csv, get_emotion_columns, get_unique_features,
     group_features_by_type, sort_groups
 )
-from feature_utils import (
-    load_emov5_module, build_weighted_vector, l2_normalize
-)
+from sae_utils import load_sae_model, build_weighted_vector, l2_normalize, TrainConfig
 from api_client import search_images
 
+sae = load_sae_model(ckpt_steps=111885, ckpt_dir="ckpt")
 
-st.set_page_config(page_title="SAEmotion", layout="wide")
-st.title("SAEmotion")
+st.set_page_config(page_title="SAEFE", layout="wide")
+st.title("SAEFE")
 
 # Load CSV
 try:
@@ -46,18 +30,6 @@ emotion_cols = get_emotion_columns(df)
 if not emotion_cols:
     st.error("No emotion columns detected.")
     st.stop()
-
-# Load emov5 module
-try:
-    import importlib
-    if 'emov5' in sys.modules:
-        importlib.reload(sys.modules['emov5'])
-    emov5 = load_emov5_module()
-    if not hasattr(emov5, 'sae') or not hasattr(emov5, 'feature_vector'):
-        raise RuntimeError("emov5 missing required attributes")
-except Exception as e:
-    st.error(f"Failed to load emov5: {e}")
-    emov5 = None
 
 top_k_input = TOP_K
 slider_min = SLIDER_MIN
@@ -314,54 +286,49 @@ if submitted:
                 weight = st.session_state[slider_key]
                 if abs(weight) > 1e-9:
                     nonzero_items.append((feature_id, weight))
-                    # Update stored value
-                    st.session_state.slider_values[feature_id] = weight
 
     if not nonzero_items:
         st.warning("No features selected (all sliders at zero). Please adjust sliders.")
         st.stop()
     
     # Build and search
-    if emov5 is None:
-        st.error("Cannot search: emov5 module not loaded.")
-    else:
-        try:
-            # Build weighted feature vector
-            with st.spinner("Building feature vector..."):
-                vec_sum = build_weighted_vector(emov5.sae, nonzero_items)
-            
-            # Normalize
-            vec_norm = l2_normalize(vec_sum)
-            st.success(
-                f"Built feature vector of dim {vec_norm.shape[0]} "
-                f"(L2 norm={np.linalg.norm(vec_norm):.6f})"
+    try:
+        # Build weighted feature vector
+        with st.spinner("Building feature vector..."):
+            vec_sum = build_weighted_vector(sae, nonzero_items)
+        
+        # Normalize
+        vec_norm = l2_normalize(vec_sum)
+        st.success(
+            f"Built feature vector of dim {vec_norm.shape[0]} "
+            f"(L2 norm={np.linalg.norm(vec_norm):.6f})"
+        )
+        
+        # Search
+        with st.spinner("Querying image backend..."):
+            result = search_images(
+                embedding=vec_norm,
             )
+        
+        # Display results
+        matches = result.get("matches", [])
+        if not matches:
+            st.warning("No results returned.")
+        else:
+            st.subheader("Results")
             
-            # Search
-            with st.spinner("Querying image backend..."):
-                result = search_images(
-                    embedding=vec_norm,
-                )
-            
-            # Display results
-            matches = result.get("matches", [])
-            if not matches:
-                st.warning("No results returned.")
-            else:
-                st.subheader("Results")
+            # Grid layout
+            cols = st.columns(5)
+            for i, match in enumerate(matches):
+                score = match[0] if len(match) > 0 else None
+                url = match[1] if len(match) > 1 else None
+                size = match[4] if len(match) > 4 else None
                 
-                # Grid layout
-                cols = st.columns(5)
-                for i, match in enumerate(matches):
-                    score = match[0] if len(match) > 0 else None
-                    url = match[1] if len(match) > 1 else None
-                    size = match[4] if len(match) > 4 else None
-                    
-                    with cols[i % 5]:
-                        if url:
-                            st.image(url, caption=f"{score:.4f} • {size}", use_column_width=True)
-                        else:
-                            st.write(match)
-     
-        except Exception as e:
-            st.exception(e)
+                with cols[i % 5]:
+                    if url:
+                        st.image(url, caption=f"{score:.4f} • {size}", use_column_width=True)
+                    else:
+                        st.write(match)
+    
+    except Exception as e:
+        st.exception(e)
